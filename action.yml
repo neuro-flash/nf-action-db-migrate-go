@@ -1,0 +1,67 @@
+name: 'DB Migration Setup'
+description: 'Prepare a database connection to run migrations'
+inputs:
+  env:
+    description: 'dev | qa | prod'
+    required: true
+  key:
+    description: 'GCP service key base64 encoded'
+    required: true
+  service:
+    description: 'name of the service without the -service suffix'
+    required: true
+  region:
+    description: 'GCP region'
+    required: false
+    default: 'europe-west4'
+  go_version:
+    description: 'Go version'
+    required: false
+    default: '1.21'
+runs:
+  using: "composite"
+  steps:
+
+    - name: Checkout code
+      uses: actions/checkout@v4
+    # to load private golang library
+    - name: Set up SSH
+      uses: webfactory/ssh-agent@v0.8.0
+      with:
+        ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+    - name: Configure Git for private modules
+      run: |
+        git config --global url."git@github.com:".insteadOf "https://github.com/"
+    - name: Setup Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ inputs.go_version }}
+
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v1
+      with:
+        project_id: nf-environment-${{ inputs.env }}
+        
+    - name: Prepare database connection
+      shell: bash
+      env:
+        DB_HOST: 127.0.0.1
+        DB_PORT: 3306
+        DB_USER: ${{ inputs.service }}-migration-${{ inputs.env }}
+        DB_SCHEMA: ${{ inputs.service }}_${{ inputs.env }}
+        DB_GCP_SOCKET: false
+        ENV: ${{ inputs.env }}
+      run: |
+        echo "extract gcp authentication"
+        echo ${{ inputs.key }} | base64 --decode > ${HOME}/gcloud-service-key.json
+        gcloud auth activate-service-account --key-file=${HOME}/gcloud-service-key.json
+        echo "Installing Cloud SQL Proxy..."
+        curl -o cloud-sql-proxy https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.12.0/cloud-sql-proxy.linux.amd64
+        chmod +x cloud-sql-proxy
+        export DB_INSTANCE="nf-environment-${{ inputs.env }}:europe-west4:neuroflash-mysql-${{ inputs.env }}"
+        echo "Starting Cloud SQL Proxy to ${DB_INSTANCE}..."
+        ./cloud-sql-proxy --credentials-file "${HOME}/gcloud-service-key.json" --port 3306 "${DB_INSTANCE}" &
+        sleep 10
+        export DB_PASS=$(gcloud secrets versions access latest --secret="db-password-${{ inputs.service }}-migration-${{ inputs.env }}")
+        echo "Running DB migrations..."
+        go run cmd/db-migrate/main.go
