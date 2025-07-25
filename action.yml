@@ -50,6 +50,17 @@ runs:
         export DB_INSTANCE="nf-environment-${{ inputs.env }}:europe-west4:neuroflash-mysql-${{ inputs.env }}"
         echo "Starting Cloud SQL Proxy to ${DB_INSTANCE}..."
         ./cloud-sql-proxy --credentials-file "${HOME}/gcloud-service-key.json" --port 3306 "${DB_INSTANCE}" &
+        echo "Waiting for Cloud SQL Proxy to be ready..."
+        timeout=60
+        while ! nc -z 127.0.0.1 3306; do
+          sleep 1
+          timeout=$((timeout - 1))
+          if [ $timeout -eq 0 ]; then
+            echo "Timeout waiting for Cloud SQL Proxy to start"
+            exit 1
+          fi
+        done
+        echo "Cloud SQL Proxy is ready after ${timeout} seconds!"
         export DB_PASS=$(gcloud secrets versions access latest --secret="db-password-${{ inputs.service }}-migration-${{ inputs.env }}")
         echo "Running DB migrations..."
         go run cmd/db-migrate/main.go
