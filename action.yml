@@ -60,7 +60,7 @@ runs:
             exit 1
           fi
         done
-        echo "Cloud SQL Proxy is ready after $((60 - timeout)) seconds!"
+        echo "Cloud SQL Proxy is ready after $((60 - timeout)) second(s)!"
         export DB_PASS=$(gcloud secrets versions access latest --secret="db-password-${{ inputs.service }}-migration-${{ inputs.env }}")
         echo "Running DB migrations..."
         go run cmd/db-migrate/main.go
