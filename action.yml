@@ -24,14 +24,6 @@ runs:
 
     - name: Checkout code
       uses: actions/checkout@v4
-    # to load private golang library
-    - name: Set up SSH
-      uses: webfactory/ssh-agent@v0.8.0
-      with:
-        ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
-    - name: Configure Git for private modules
-      run: |
-        git config --global url."git@github.com:".insteadOf "https://github.com/"
     - name: Setup Go
       uses: actions/setup-go@v4
       with:
