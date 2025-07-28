@@ -37,10 +37,12 @@ runs:
         DB_HOST: 127.0.0.1
         DB_PORT: 3306
         DB_USER: ${{ inputs.service }}-migration-${{ inputs.env }}
-        DB_SCHEMA: ${{ inputs.service }}_${{ inputs.env }}
         DB_GCP_SOCKET: false
         ENV: ${{ inputs.env }}
       run: |
+        export RAW_SCHEMA=${{ inputs.service }}_${{ inputs.env }}
+        export DB_SCHEMA="${RAW_SCHEMA//-/_}"
+        echo "applying migrations on schema ${DB_SCHEMA}"
         echo "extract gcp authentication"
         echo ${{ inputs.key }} | base64 --decode > ${HOME}/gcloud-service-key.json
         gcloud auth activate-service-account --key-file=${HOME}/gcloud-service-key.json
