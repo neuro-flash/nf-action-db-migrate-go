@@ -21,6 +21,10 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: Prevent file overwrite errors
+      shell: bash
+      run: echo "GOTOOLCHAIN=off" >> $GITHUB_ENV
+
     - name: Setup Go
       uses: actions/setup-go@v4
       with:
