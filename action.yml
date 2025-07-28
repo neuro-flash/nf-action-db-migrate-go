@@ -23,7 +23,7 @@ runs:
   steps:
     - name: Prevent file overwrite errors
       shell: bash
-      run: rm -rf ~/go/pkg/mod/golang.org/toolchain && echo "GOTOOLCHAIN=off" >> $GITHUB_ENV
+      run: echo "GOTOOLCHAIN=local" >> $GITHUB_ENV
 
     - name: Setup Go
       uses: actions/setup-go@v4
