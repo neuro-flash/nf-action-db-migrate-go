@@ -48,14 +48,14 @@ runs:
         export DB_SCHEMA="${RAW_SCHEMA//-/_}"
         echo "applying migrations on schema ${DB_SCHEMA}"
         echo "extract gcp authentication"
-        echo ${{ inputs.key }} | base64 --decode > ${HOME}/gcloud-service-key.json
-        gcloud auth activate-service-account --key-file=${HOME}/gcloud-service-key.json
+        echo ${{ inputs.key }} | base64 --decode > ${HOME}/.config/gcloud/application_default_credentials.json
+        gcloud auth activate-service-account --key-file=${HOME}/.config/gcloud/application_default_credentials.json
         echo "Installing Cloud SQL Proxy..."
         curl -o cloud-sql-proxy https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.12.0/cloud-sql-proxy.linux.amd64
         chmod +x cloud-sql-proxy
         export DB_INSTANCE="nf-environment-${{ inputs.env }}:europe-west4:neuroflash-mysql-${{ inputs.env }}"
         echo "Starting Cloud SQL Proxy to ${DB_INSTANCE}..."
-        ./cloud-sql-proxy --credentials-file "${HOME}/gcloud-service-key.json" --port 3306 "${DB_INSTANCE}" &
+        ./cloud-sql-proxy --credentials-file "${HOME}/.config/gcloud/application_default_credentials.json" --port 3306 "${DB_INSTANCE}" &
         echo "Waiting for Cloud SQL Proxy to be ready..."
         timeout=60
         while ! nc -z 127.0.0.1 3306; do
