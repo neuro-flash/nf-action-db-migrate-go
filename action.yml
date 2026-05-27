@@ -18,6 +18,10 @@ inputs:
     description: 'Go version'
     required: false
     default: '1.21'
+  db_type:
+    description: 'mysql | postgres - which database the migration targets'
+    required: false
+    default: 'mysql'
 runs:
   using: "composite"
   steps:
@@ -34,8 +38,9 @@ runs:
       uses: google-github-actions/setup-gcloud@v1
       with:
         project_id: nf-environment-${{ inputs.env }}
-        
-    - name: Prepare database connection
+
+    - name: Prepare database connection (mysql)
+      if: inputs.db_type == 'mysql'
       shell: bash
       env:
         DB_HOST: 127.0.0.1
@@ -46,14 +51,14 @@ runs:
       run: |
         export RAW_SCHEMA=${{ inputs.service }}_${{ inputs.env }}
         export DB_SCHEMA="${RAW_SCHEMA//-/_}"
-        echo "applying migrations on schema ${DB_SCHEMA}"
+        echo "applying mysql migrations on schema ${DB_SCHEMA}"
         echo "extract gcp authentication"
         echo ${{ inputs.key }} | base64 --decode > ${HOME}/.config/gcloud/application_default_credentials.json
         gcloud auth activate-service-account --key-file=${HOME}/.config/gcloud/application_default_credentials.json
         echo "Installing Cloud SQL Proxy..."
         curl -o cloud-sql-proxy https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.12.0/cloud-sql-proxy.linux.amd64
         chmod +x cloud-sql-proxy
-        export DB_INSTANCE="nf-environment-${{ inputs.env }}:europe-west4:neuroflash-mysql-${{ inputs.env }}"
+        export DB_INSTANCE="nf-environment-${{ inputs.env }}:${{ inputs.region }}:neuroflash-mysql-${{ inputs.env }}"
         echo "Starting Cloud SQL Proxy to ${DB_INSTANCE}..."
         ./cloud-sql-proxy --credentials-file "${HOME}/.config/gcloud/application_default_credentials.json" --port 3306 "${DB_INSTANCE}" &
         echo "Waiting for Cloud SQL Proxy to be ready..."
@@ -68,5 +73,42 @@ runs:
         done
         echo "Cloud SQL Proxy is ready after $((60 - timeout)) second(s)!"
         export DB_PASS=$(gcloud secrets versions access latest --secret="db-password-${{ inputs.service }}-migration-${{ inputs.env }}")
+        echo "Running DB migrations..."
+        go run ./cmd/db-migrate
+
+    - name: Prepare database connection (postgres)
+      if: inputs.db_type == 'postgres'
+      shell: bash
+      env:
+        POSTGRES_DB_HOST: 127.0.0.1
+        POSTGRES_DB_PORT: 5432
+        POSTGRES_MIGRATION_DB_USER: ${{ inputs.service }}-migration-${{ inputs.env }}
+        DB_GCP_SOCKET: false
+        ENV: ${{ inputs.env }}
+      run: |
+        export RAW_SCHEMA=${{ inputs.service }}_${{ inputs.env }}
+        export POSTGRES_DB_SCHEMA="${RAW_SCHEMA//-/_}"
+        echo "applying postgres migrations on schema ${POSTGRES_DB_SCHEMA}"
+        echo "extract gcp authentication"
+        echo ${{ inputs.key }} | base64 --decode > ${HOME}/.config/gcloud/application_default_credentials.json
+        gcloud auth activate-service-account --key-file=${HOME}/.config/gcloud/application_default_credentials.json
+        echo "Installing Cloud SQL Proxy..."
+        curl -o cloud-sql-proxy https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.12.0/cloud-sql-proxy.linux.amd64
+        chmod +x cloud-sql-proxy
+        export DB_INSTANCE="nf-environment-${{ inputs.env }}:${{ inputs.region }}:neuroflash-postgres-${{ inputs.env }}"
+        echo "Starting Cloud SQL Proxy to ${DB_INSTANCE}..."
+        ./cloud-sql-proxy --credentials-file "${HOME}/.config/gcloud/application_default_credentials.json" --port 5432 "${DB_INSTANCE}" &
+        echo "Waiting for Cloud SQL Proxy to be ready..."
+        timeout=60
+        while ! nc -z 127.0.0.1 5432; do
+          sleep 1
+          timeout=$((timeout - 1))
+          if [ $timeout -eq 0 ]; then
+            echo "Timeout waiting for Cloud SQL Proxy to start"
+            exit 1
+          fi
+        done
+        echo "Cloud SQL Proxy is ready after $((60 - timeout)) second(s)!"
+        export POSTGRES_MIGRATION_DB_PASS=$(gcloud secrets versions access latest --secret="postgres-password-${{ inputs.service }}-migration-${{ inputs.env }}")
         echo "Running DB migrations..."
         go run ./cmd/db-migrate
